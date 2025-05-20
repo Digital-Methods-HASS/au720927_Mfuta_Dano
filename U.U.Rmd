@@ -1,0 +1,287 @@
+---
+title: 'U.U.'
+author: 'DNM'
+date: 'created on 12 May 2025 and updated `r format(Sys.time(), "%d %B, %Y")`'
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    toc_collapsed: true
+    toc_depth: 3
+    number_sections: true
+    theme: cosmo
+---
+
+```{r setup, include=TRUE}
+knitr::opts_chunk$set(echo = TRUE,
+                      warning = FALSE,
+                      message = FALSE)
+
+#Funtion Tools for viualisations:
+library(tidyverse)
+library(readxl)
+library(here)
+
+# For text mining:
+library(pdftools)
+library(tidytext)
+library(textdata) 
+library(ggwordcloud)
+library(ggplot2)
+theme_set(theme_classic())
+
+
+```
+
+### Plying the 1801 Census into data
+
+```{r get-documents, include=TRUE}
+arbejde_1801 <- read_excel("data/census-1801-data-csv.xlsx")
+
+arbejde_1801
+
+#A good look at "erhverv" shows how visible IA is in the census
+arbejde_1801["erhverv"]
+
+```
+### Lets use the 'count' funtion to count the occupations by gender and the difference
+
+```{r counting1, include=TRUE}
+
+occupation_counts <- arbejde_1801 %>%
+  group_by(erhverv, koen) %>%
+  summarise(count = n(), .groups = "drop")
+
+occupation_wide <- occupation_counts %>%
+  pivot_wider(names_from = koen, values_from = count, values_fill = 0)
+
+occupation_wide
+
+occupation_wide <- occupation_wide %>%
+  mutate(abs(M-K))
+
+write.csv(occupation_wide, "occupation_gender_diff.csv", row.names = TRUE)
+```
+
+
+### Now let's filter the results to use in plotting
+
+
+```{r filtering, include=TRUE}
+
+arbejde_1801_Z <- read_excel("data/census-1801-data-csv.xlsx")
+
+arbejde_1801_X <- arbejde_1801_Z %>%
+  filter(erhverv != "IA")
+
+arbejde_1801_X
+
+
+arbejde_1801_Y <- arbejde_1801_Z %>%
+  filter(erhverv != "IA") %>%
+  filter(erhverv != "Militant") %>%
+  filter(erhverv != "HV")
+
+arbejde_1801_Y
+
+```
+
+
+### Plying the 1860 Census into data
+
+```{r dataset, include=TRUE}
+arbejde_1860 <- read_excel("data/census-1860-data-csv.xlsx")
+
+arbejde_1860
+
+#A good look at "stilling" shows how visible Tjener and IA is in the census
+arbejde_1860["stilling"]
+
+```
+
+### Counting once more with the 1860 data
+
+```{r counting2, include=TRUE}
+
+occupation_counts_60 <- arbejde_1860 %>%
+  group_by(stilling, koen) %>%
+  summarise(count = n(), .groups = "drop")
+
+occupation_wide_60 <- occupation_counts_60 %>%
+  pivot_wider(names_from = koen, values_from = count, values_fill = 0)
+
+occupation_wide_60
+
+occupation_wide_60 <- occupation_wide_60 %>%
+  mutate(abs(M - K))
+
+write.csv(occupation_wide, "occupation_gender_diff_60.csv", row.names = TRUE)
+
+```
+
+
+```{r filtering2, include=TRUE}
+
+#Let's omit "IA" and "Tjener" in one and addtionaly omit "HV" in another, to produce a clear image of the division between genders in 1860s work culture
+
+arbejde_1860_X <- arbejde_1860 %>%
+  filter(stilling != "IA")%>%
+  filter(stilling != "Tjener")
+
+arbejde_1860_X
+
+arbejde_1860_Y <- arbejde_1860 %>%
+  filter(stilling != "IA")
+
+arbejde_1860_Z <- arbejde_1860 %>%
+  filter(stilling != "IA")%>%
+  filter(stilling != "Tjener")%>%
+  filter(stilling != "HV")
+
+arbejde_1860_Z
+
+```
+
+
+
+### Plotting the 1801 and 1860 data
+
+```{r plotting, include=TRUE}
+
+#A good look at "IA"
+
+arbejde_1801_IA<-arbejde_1801 %>%
+  filter(erhverv == "IA")
+
+
+g <- ggplot(arbejde_1801_IA, aes(erhverv))
+g + geom_bar(aes(fill=koen), width = 0.5) + 
+  theme(axis.text.x = element_text(angle=65, vjust=0.6)) + 
+  labs(title="Unmarried and Empoly. 1801_IA")
+```
+
+
+```{r X, include=TRUE}
+
+g <- ggplot(arbejde_1801_X, aes(erhverv))
+arb_X <- g + geom_bar(aes(fill=koen), width = 0.5) + 
+  theme(axis.text.x = element_text(angle=65, vjust=0.6)) + 
+  labs(title="Unmarried and Empoly. 1801", 
+       subtitle="Gender and Employment without IA")
+
+ggsave(plot = arb_X, 
+       here("figures","arb_x_1801.png"), 
+       height = 6, 
+       width = 8)
+arb_X
+```
+
+```{r Y, include=TRUE}
+
+g <- ggplot(arbejde_1801_Y, aes(erhverv))
+arb_Y <- g + geom_bar(aes(fill=koen), width = 0.5) + 
+  theme(axis.text.x = element_text(angle=65, vjust=0.6)) + 
+  labs(title="Unmarried and Empoly. 1801", 
+       subtitle="Gender and Employment Without IA, Mili. and HV")
+
+ggsave(plot = arb_Y, 
+       here("figures","arb_Y_1801.png"), 
+       height = 6, 
+       width = 8)
+arb_Y
+```
+
+
+### Time for 1860!
+
+```{r IA_T, include=TRUE}
+
+#A good look at both "IA" "Tjener" in 1860
+
+arbejde_1860_IA<-arbejde_1860 %>%
+  filter(stilling == "IA")
+
+g <- ggplot(arbejde_1860_IA, aes(stilling))
+g + geom_bar(aes(fill=koen), width = 0.5, height= 7) + 
+  theme(axis.text.x = element_text(angle=65, vjust=0.6)) + 
+  labs(title="Unmarried and Empoly. 1860_IA")
+
+arbejde_1860_T<-arbejde_1860 %>%
+  filter(stilling == "Tjener")
+
+g <- ggplot(arbejde_1860_T, aes(stilling))
+g + geom_bar(aes(fill=koen), width = 0.5, height = 7) + 
+  theme(axis.text.x = element_text(angle=65, vjust=0.6)) + 
+  labs(title="Unmarried and Empoly. 1860_T")
+
+```
+
+```{r 1860Y, include=TRUE}
+
+g <- ggplot(arbejde_1860_Y, aes(stilling))
+g + geom_bar(aes(fill=koen), width = 0.5) + 
+  theme(axis.text.x = element_text(angle=65, vjust=0.6)) + 
+  labs(title="Unmarried and Empoly. 1860", 
+       subtitle="Gender and Employment Without IA")
+```
+
+```{r 1860X, include=TRUE}
+
+g <- ggplot(arbejde_1860_X, aes(stilling))
+g + geom_bar(aes(fill=koen), width = 0.5) + 
+  theme(axis.text.x = element_text(angle=65, vjust=0.6)) + 
+  labs(title="Unmarried and Empoly. 1860", 
+       subtitle="Gender and Employment Without IA and Tjener")
+```
+
+```{r 1860Z, include=TRUE}
+
+g <- ggplot(arbejde_1860_Z, aes(stilling))
+arb_z <- g + geom_bar(aes(fill=koen), width = 0.5) + 
+  theme(axis.text.x = element_text(angle=65, vjust=0.6)) + 
+  labs(title="Unmarried and Empoly. 1860", 
+       subtitle="Gender and Employment Without IA, HV and Tjener")
+
+ggsave(plot = arb_z, 
+       here("figures","arb_z_1860.png"), 
+       height = 6, 
+       width = 8)
+arb_z
+```
+
+### Comparasion of Both Census Datasets
+
+```{r Combine, include=TRUE}
+
+arbejde_1801_Y$year <- "1801"
+arbejde_1860_Z$year <- "1860"
+
+arbejde_1801_Y$occupation <- arbejde_1801_Y$erhverv
+arbejde_1860_Z$occupation <- arbejde_1860_Z$stilling
+
+
+combined_data <- rbind(
+  arbejde_1801_Y[, c("occupation", "koen", "year")],
+  arbejde_1860_Z[, c("occupation", "koen", "year")]
+)
+
+
+```
+
+```{r Com, include=TRUE}
+
+Com_arb <- ggplot(combined_data, aes(x = occupation, fill = year)) +
+  geom_bar(position = "dodge", width = 0.5) +
+  facet_wrap(~ koen) +
+  theme(axis.text.x = element_text(angle = 65, vjust = 0.6)) +
+  labs(title = "Employment by Gender and Year",
+       subtitle = "Comparing 1801 and 1860",
+       x = "Occupation", y = "Count", fill = "Year")
+
+ggsave(plot = Com_arb, 
+       here("figures","Com_arb.png"), 
+       height = 7, 
+       width = 9)
+Com_arb
+
+```
