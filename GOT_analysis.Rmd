@@ -1,0 +1,317 @@
+---
+title: 'Game of Thrones'
+author: 'DNM'
+date: 'created on 22 November 2020 and updated `r format(Sys.time(), "%d %B, %Y")`'
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    toc_collapsed: true
+    toc_depth: 3
+    number_sections: true
+    theme: lumen
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE,
+                      warning = FALSE,
+                      message = FALSE)
+
+library(tidyverse)
+library(here)
+
+# For text mining:
+library(pdftools)
+library(tidytext)
+library(textdata) 
+library(ggwordcloud)
+
+```
+
+
+### Aquiring the GOT pdf and converting it to data:
+```{r get-document, include=FALSE}
+got_path <- here("data","got.pdf")
+got_text <- pdf_text(got_path)
+
+got_text
+```
+
+
+###Selecting page 33 as the base of the analysis
+```{r single-page}
+got_p33 <- got_text[33]
+got_p33
+```
+
+
+### Wrangling: Splicting the page into separate lines (`stringr::str_split()`), unresting into regular columms (`tidyr::unnest()`) and removeing leadinng/trailing white space (`stringr::str_trim()`)
+
+```{r split-lines}
+got_df <- data.frame(got_p33) %>% 
+  mutate(text_full = str_split(got_p33, pattern = '\n')) %>% 
+  unnest(text_full) %>% 
+  mutate(text_full = str_trim(text_full)) 
+
+got_df
+
+```
+
+
+### Moreover, (`tidytext::unnest_tokens()`) is used to split the columns into words and into a tidy format: 
+
+```{r tokenize}
+got_tokens <- got_df %>% 
+  unnest_tokens(word, text_full)
+got_tokens
+
+```
+
+Let's count the words!
+```{r count-words}
+got_wc <- got_tokens %>% 
+  count(word) %>% 
+  arrange(-n)
+got_wc
+```
+
+### Removing stop words:
+
+We will *remove* stop words using `tidyr::anti_join()`:
+```{r stopwords}
+got_stop <- got_tokens %>% 
+  anti_join(stop_words) %>% 
+  select(-got_p33)
+```
+
+We will count the words again 
+```{r count-words2}
+got_swc <- got_stop %>% 
+  count(word) %>% 
+  arrange(-n)
+```
+
+Here we remove all the numbers in the data-set in `got_stop`
+```{r skip-numbers}
+
+got_no_numeric <- got_stop %>% 
+  filter(is.na(as.numeric(word)))
+```
+
+### The Top 100 words in the got_text
+
+With the use of the 'count', 'arrange(-n)' and 'head' 
+
+```{r wordcloud-prep}
+
+length(unique(got_no_numeric$word))
+
+got_top100 <- got_no_numeric %>% 
+  count(word) %>% 
+  arrange(-n) %>% 
+  head(100)
+got_top100
+
+```
+Here is plain word cloud
+
+```{r wordcloud}
+got_cloud <- ggplot(data = got_top100, aes(label = word)) +
+  geom_text_wordcloud() +
+  theme_minimal()
+
+got_cloud
+```
+
+Here is a more customised word cloud
+
+```{r wordcloud-pro}
+ggplot(data = got_top100, aes(label = word, size = n)) +
+  geom_text_wordcloud_area(aes(color = n), shape = "diamond") +
+  scale_size_area(max_size = 18) +
+  scale_color_gradientn(colors = c("darkgreen","blue","red")) +
+  theme_minimal()
+```
+
+
+
+### Sentiment analysis
+
+#So, let's pile and figure out how positive or negative the got_text is in a binary world cloud 
+
+Let's begin with the lexicon 'afinn' to promote a linguitistc binary
+
+
+"afinn": Words ranked from -5 (very negative) to +5 (very positive)
+```{r afinn}
+get_sentiments(lexicon = "afinn")
+
+
+afinn_pos <- get_sentiments("afinn") %>% 
+  filter(value %in% c(3,4,5))
+
+ 
+afinn_pos
+```
+
+bing: binary, "positive" or "negative"
+```{r bing}
+get_sentiments(lexicon = "bing")
+```
+
+Now nrc:
+```{r nrc}
+get_sentiments(lexicon = "nrc")
+```
+
+Let's do sentiment analysis on the got_text data using afinn, and nrc. 
+
+
+### Sentiment analysis with afinn: 
+
+Binding words in `got_stop` to `afinn` lexicon:
+```{r bind-afinn}
+got_afinn <- got_stop %>% 
+  inner_join(get_sentiments("afinn"))
+```
+
+Let's find some counts (by sentiment ranking):
+```{r count-afinn}
+got_afinn_hist <- got_afinn %>% 
+  count(value)
+
+# Plot them: 
+ggplot(data = got_afinn_hist, aes(x = value, y = n)) +
+  geom_col(aes(fill = value)) +
+  theme_bw()
+```
+
+Investigating some of the words in a bit more depth:
+```{r afinn-2}
+# What are these '2' words?
+got_afinn2 <- got_afinn %>% 
+  filter(value == 2)
+
+got_afinn2
+```
+
+```{r afinn-2-more}
+# The unique 2-score words:
+unique(got_afinn2$word)
+
+# Counting & ploting them
+got_afinn2_n <- got_afinn2 %>% 
+  count(word, sort = TRUE) %>% 
+  mutate(word = fct_reorder(factor(word), n))
+
+
+ggplot(data = got_afinn2_n, aes(x = word, y = n)) +
+  geom_col() +
+  coord_flip() +
+  theme_bw()
+
+# Super! What we see is that the 'sweet' is primed as positive and 'treasures' less so. However in the context in page 33 of Game of Thrones, these words are framed in a different light.'Sweet' is primed as 'sickly sweet'. Thus negative not positive in the context.
+
+```
+
+Look back at the IPCC report, and search for "confidence." Is it typically associated with emotion, or something else? 
+
+We learn something important from this example: Just using a sentiment lexicon to match words will not differentiate between different uses of the word...(ML can start figuring it out with context, but we won't do that here).
+
+Or we can summarize sentiment for the report: 
+```{r summarize-afinn}
+got_summary <- got_afinn %>% 
+  summarize(
+    mean_score = mean(value),
+    median_score = median(value)
+  )
+
+got_summary
+```
+
+The mean and median indicate *slightly* negative overall sentiments based on the AFINN lexicon. 
+
+
+### NRC lexicon for sentiment analysis
+
+We can use the NRC lexicon to start "binning" text by the feelings they're typically associated with. As above, we'll use inner_join() to combine the IPCC non-stopword text with the nrc lexicon: 
+
+```{r bind-bing}
+got_nrc <- got_stop %>% 
+  inner_join(get_sentiments("nrc"))
+
+got_nrc
+```
+
+Wait, won't that exclude some of the words in our text? YES! We should check which are excluded using `anti_join()`:
+
+```{r check-exclusions}
+got_exclude <- got_stop %>% 
+  anti_join(get_sentiments("nrc"))
+
+# View(ipcc_exclude)
+
+# Count to find the most excluded:
+got_exclude_n <- got_exclude %>% 
+  count(word, sort = TRUE)
+
+head(got_exclude_n)
+```
+
+**Lesson: always check which words are EXCLUDED in sentiment analysis using a pre-built lexicon! **
+
+Now find some counts: 
+```{r count-bing}
+got_nrc_n <- got_nrc %>% 
+  count(sentiment, sort = TRUE)
+
+# And plot them:
+
+ggplot(data = got_nrc_n, aes(x = sentiment, y = n)) +
+  geom_col(aes(fill = sentiment))+
+  theme_bw()
+```
+
+Or count by sentiment *and* word, then facet:
+```{r count-nrc}
+got_nrc_n5 <- got_nrc %>% 
+  count(word,sentiment, sort = TRUE) %>% 
+  group_by(sentiment) %>% 
+  top_n(5) %>% 
+  ungroup()
+
+got_nrc_gg <- ggplot(data = got_nrc_n5, aes(x = reorder(word,n), y = n, fill = sentiment)) +
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~sentiment, ncol = 2, scales = "free") +
+  coord_flip() +
+  theme(text = element_text(size = 14, face = "bold")) +
+  theme(axis.text.x = element_text(color = "grey20", size = 12, angle = 45,
+                                   hjust = 0.5, vjust = 0.5),
+        axis.text.y = element_text(color = "grey20", size = 12),
+        text = element_text(size = 14),
+        plot.title = element_text(hjust = 0.5))+
+theme_minimal() +
+  labs(x = "Word", y = "Count")
+
+# Show it
+got_nrc_gg
+
+# Save it
+ggsave(plot = got_nrc_gg, 
+       here("figures","got_nrc_sentiment.pdf"), 
+       height = 13, 
+       width = 16)
+
+```
+
+Here 'Tree' is primed as 'disgust' in nrc. Let's see what aspects are also primed with the word:
+```{r nrc-confidence}
+trii <- get_sentiments(lexicon = "nrc") %>% 
+  filter(word == "tree")
+
+trii
+#This can be a registered quirk of the sentiment analysis as some words are primed with certain values without a reliable reason.
+
+```
+
+
